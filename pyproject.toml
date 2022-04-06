@@ -1,0 +1,21 @@
+[tool.poetry]
+name = "code_lab2"
+version = "0.1.0"
+description = "System Modulation lab2"
+authors = ["Nykyforov Denys <deshq.nikiforov@gmail.com>"]
+
+[tool.poetry.dependencies]
+python = "3.10.4"
+numpy = "^1.22.3"
+pandas = "^1.4.2"
+simpy = "^4.0.1"
+matplotlib = "^3.5.1"
+environs = "^9.5.0"
+seaborn = "^0.11.2"
+
+[tool.poetry.dev-dependencies]
+autopep8 = "^1.6.0"
+
+[build-system]
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"

@@ -120,7 +120,9 @@ if __name__ == "__main__":
             bank,
             CUSTOMER_INTERVAL
         ))
-        env.run(until=SIM_TIME)
+        # env.run(until=SIM_TIME)
+        while env.peek() < SIM_TIME:
+            env.step()
         build_histogram(bank.customers_info, 'Histogram')
         load_csv_file(bank.customers_info)
 
