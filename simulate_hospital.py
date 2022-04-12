@@ -1,22 +1,31 @@
 import random
+from matplotlib import pyplot as plt
 import numpy as np
+import pandas as pd
 import simpy as sp
+import seaborn as sns
+from utils.load import load_csv_file
+from utils.statistic import get_statistics_hospital
+from app.config import Config, HospitalConfig
 
-from app.config import (
-    PATIENT_TYPES,
-    PATIENT_INTERVAL_TIMES,
-    AVG_REGISTRATION_TIMES,
-    RECEPTION_TRIP_TIME,
-    CHAMBER_TRIP_TIME_LOW,
-    CHAMBER_TRIP_TIME_HIGH,
-    LAB_TRIP_TIME_LOW,
-    LAB_TRIP_TIME_HIGH,
-    LAB_REGISTRY_TIME_SHAPE,
-    LAB_REGISTRY_TIME_SCALE,
-    LAB_ANALYSIS_TIME_SHAPE,
-    LAB_ANALYSIS_TIME_SCALE,
-    RANDOM_SEED,
-    SIM_TIME)
+
+class PatientInfo(object):
+
+    __match_args__ = ('type', 'request')
+
+    def __init__(
+        self,
+        name: str,
+        type: str
+    ):
+        self.name = name
+        self.type = type
+        self.request = {
+            'is_reg_finish': False,
+            'is_service_finish': False,
+            'is_analyse_finish': False,
+            'is_re-reg_finish': False,
+        }
 
 
 class ReceptionDepartment(object):
@@ -24,122 +33,222 @@ class ReceptionDepartment(object):
     def __init__(
             self,
             env: sp.Environment,
-            num_doctors: int,
+            hospital_staff: dict,
             reception_trip_time: float,
-            registration_times: dict
+            registration_times: dict,
+            accompaniment_time: dict,
     ):
 
         self.env = env
-        self.doctor_on_duty = sp.PriorityResource(env, num_doctors)
+        self.hospital_staff = hospital_staff
+        self.doctor_on_duty = sp.PriorityResource(
+            env, hospital_staff['doctors'])
+        self.nurse = sp.PriorityResource(env, hospital_staff['nurses'])
         self.reception_trip_time = reception_trip_time
         self.registration_times = registration_times
+        self.accompaniment_time = accompaniment_time
 
-    def trip_to_reception(self, patient_name: str):
+    def trip_to_reception(
+        self,
+        patient: PatientInfo,
+        start_at: float
+    ):
 
         spent_time = random.expovariate(
             1.0 / self.reception_trip_time)
 
         yield self.env.timeout(spent_time)
 
-    def registration(self, patient_type: str, patient_name: str):
+        if patient.type == "1":
+            result_type1[f'{patient.name}'] = {
+                'name': f"Customer {patient.name}",
+                'started_at': start_at,
+                'trip_to_reception_time': spent_time
+            }
+        elif patient.type == "2":
+            result_type2[f'{patient.name}'] = {
+                'name': f"Customer {patient.name}",
+                'started_at': start_at,
+                'trip_to_reception_time': spent_time
+            }
+        elif patient.type == "3":
+            result_type3[f'{patient.name}'] = {
+                'name': f"Customer {patient.name}",
+                'started_at': start_at,
+                'trip_to_reception_time': spent_time
+            }
 
-        spent_time = random.expovariate(
-            1.0 / self.registration_times[patient_type])
-
-        yield self.env.timeout(spent_time)
-
-
-class MedicalChamber(object):
-
-    def __init__(
-            self,
-            env: sp.Environment,
-            num_nurses: int,
-            accompaniment_time_low: float,
-            accompaniment_time_high: float
-    ):
-
-        self.env = env
-        self.nurse = sp.Resource(env, num_nurses)
-        self.accompaniment_time_low = accompaniment_time_low
-        self.accompaniment_time_high = accompaniment_time_high
-
-    def nurse_accompaniment(self, patient_name: str):
-
-        spent_time = np.random.randint(
-            self.accompaniment_time_low, self.accompaniment_time_high)
-
-        yield self.env.timeout(spent_time)
-
-
-class LabRegistry(object):
-
-    def __init__(
-            self,
-            env: sp.Environment,
-            num_administrators: int,
-            trip_time_low: float,
-            trip_time_high: float,
-            registry_time_shape: float,
-            registry_time_scale: float
-    ):
-
-        self.env = env
-        self.registry_admin = sp.Resource(env, num_administrators)
-        self.trip_time_low = trip_time_low
-        self.trip_time_high = trip_time_high
-        self.registry_time_shape = registry_time_shape
-        self.registry_time_scale = registry_time_scale
-
-    def trip_to_lab(self, patient_name: str):
-
-        spent_time = np.random.randint(
-            self.trip_time_low, self.trip_time_high)
-
-        yield self.env.timeout(spent_time)
-
-    def service(self, patient_name: str):
-
-        spent_time = np.random.gamma(
-            shape=self.registry_time_shape, scale=self.registry_time_scale)
-
-        yield self.env.timeout(spent_time)
-
-
-class LabWaitingRoom(object):
-
-    def __init__(
-            self,
-            env: sp.Environment,
-            num_assistants: int,
-            analysis_time_shape: float,
-            analysis_time_scale: float
-    ):
-
-        self.env = env
-        self.lab_assistant = sp.Resource(env, num_assistants)
-        self.analysis_time_shape = analysis_time_shape
-        self.analysis_time_scale = analysis_time_scale
-
-    def analyse(self, patient_name: str):
-
-        spent_time = np.random.gamma(
-            shape=self.analysis_time_shape, scale=self.analysis_time_scale)
-
-        yield self.env.timeout(spent_time)
-
-
-class CustomerInfo(object):
-
-    __match_args__ = ('name', 'customer_type')
-
-    def __init__(
+    def registration(
         self,
-        name: str,
-        customer_type: str
+        patient: PatientInfo,
+        wait: float
     ):
-        self.name = name
-        self.customer_type = customer_type
+        spent_time = random.expovariate(
+            1.0 / self.registration_times[patient.type])
+
+        yield self.env.timeout(spent_time)
+
+        dict = chose_dict(patient)
+
+        dict.update({'wait_doctor': wait})
+        dict.update({'registration_time': spent_time})
+
+    def accompaniment_to_chamber(
+        self,
+        patient: PatientInfo,
+        wait: float
+    ):
+        spent_time = np.random.uniform(
+            self.accompaniment_time['low'], self.accompaniment_time['high'])
+
+        yield self.env.timeout(spent_time)
+
+        dict = chose_dict(patient)
+
+        dict.update({'wait_accompaniment_time': wait})
+        dict.update({'accompaniment_time': spent_time})
+        dict.update({'finished_at':  self.env.now})
+        wasted_time = dict['finished_at'] - dict['started_at']
+        dict.update({'all_wasted_time': wasted_time})
+
+    def request_registration(self, patient: PatientInfo, priority: int = 0):
+
+        start_at = self.env.now
+
+        if patient.request['is_reg_finish'] == False:
+            yield self.env.process(self.trip_to_reception(
+                patient, start_at))
+        elif patient.request['is_analyse_finish'] == True:
+            yield self.env.process(laboratory.trip(patient))
+
+        with self.doctor_on_duty.request(priority) as req:
+
+            arrive_at = self.env.now
+            # waiting in queue
+            yield req
+            wait = self.env.now - arrive_at
+            # we got to the doctor on duty
+            yield self.env.process(self.registration(patient, wait))
+
+            if patient.request['is_reg_finish'] == True:
+                patient.request.update({'is_re-reg_finish': True})
+            else:
+                patient.request.update({'is_reg_finish': True})
+
+            hospital.handling_customer(patient)
+
+    def request_accompaniment(self, patient: PatientInfo, priority: int = 0):
+
+        with self.nurse.request(priority) as req:
+
+            arrive = self.env.now
+            # waiting in queue
+            yield req
+            wait = self.env.now - arrive
+            # go to the chamber
+            yield self.env.process(
+                self.accompaniment_to_chamber(patient, wait))
+
+
+class Labaratory(object):
+
+    def __init__(
+            self,
+            env: sp.Environment,
+            hospital_staff: dict,
+            trip_time: dict,
+            registry_time: dict,
+            analysis_time: dict,
+    ):
+
+        self.env = env
+        self.hospital_staff = hospital_staff
+        self.registry_admin = sp.PriorityResource(
+            env, hospital_staff['admins'])
+        self.lab_assistant = sp.PriorityResource(
+            env, hospital_staff['lab_assistans'])
+        self.trip_time = trip_time
+        self.registry_time = registry_time
+        self.analysis_time = analysis_time
+
+    def trip(self, patient: PatientInfo):
+
+        spent_time = np.random.uniform(
+            self.trip_time['low'], self.trip_time['high'])
+
+        yield self.env.timeout(spent_time)
+
+        dict = chose_dict(patient)
+
+        if patient.request['is_analyse_finish'] == True:
+            old_value = dict.get('trip_time')
+            dict.update({'trip_time': old_value + spent_time})
+        else:
+            dict.update({'trip_time': spent_time})
+
+    def service(self, patient: PatientInfo, wait: float):
+
+        spent_time = np.random.gamma(
+            self.registry_time['shape'], 1.0 / self.registry_time['scale'])
+
+        yield self.env.timeout(spent_time)
+
+        dict = chose_dict(patient)
+
+        dict.update({'wait_admin': wait})
+        dict.update({'service_time': spent_time})
+
+    def analyse(self, patient: PatientInfo, wait: float):
+
+        spent_time = np.random.gamma(
+            self.analysis_time['shape'], 1.0 / self.analysis_time['scale'])
+
+        yield self.env.timeout(spent_time)
+
+        dict = chose_dict(patient)
+
+        dict.update({'wait_assistent': wait})
+        dict.update({'analyse_time': spent_time})
+
+    def request_service(self, patient: PatientInfo, priority: int = 0):
+
+        yield self.env.process(self.trip(patient))
+
+        with self.registry_admin.request(priority) as req:
+
+            arrive = self.env.now
+            # waiting in queue
+            yield req
+            wait = self.env.now - arrive
+            # we got to the administrator
+            yield self.env.process(self.service(patient, wait))
+
+            patient.request.update({'is_service_finish': True})
+            hospital.handling_customer(patient)
+
+    def request_analyse(self, patient: PatientInfo, priority: int = 0):
+
+        with self.lab_assistant.request(priority) as req:
+
+            arrive = self.env.now
+            # waiting in queue
+            yield req
+            wait = self.env.now - arrive
+            # we got to the assistent
+            yield self.env.process(self.analyse(patient, wait))
+
+            if patient.type == "3":
+
+                dict = chose_dict(patient)
+                patient.request.update({'is_analyse_finish': True})
+                dict.update({'finished_at': self.env.now})
+                wasted_time = dict['finished_at'] - dict['started_at']
+                dict.update({'all_wasted_time': wasted_time})
+
+            elif patient.type == "2":
+
+                patient.request.update({'is_analyse_finish': True})
+                hospital.handling_customer(patient)
 
 
 class Hospital(object):
@@ -150,171 +259,235 @@ class Hospital(object):
         patient_types: list,
         patient_intervals: dict,
         reception: ReceptionDepartment,
-        medical_chamber: MedicalChamber,
-        lab_registry: LabRegistry,
-        lab_waiting_room: LabWaitingRoom
+        laboratory: Labaratory,
     ):
         self.env = env
         self.patient_types = patient_types
         self.patient_intervals = patient_intervals
         self.reception = reception
-        self.medical_chamber = medical_chamber
-        self.lab_registry = lab_registry
-        self.lab_waiting_room = lab_waiting_room
+        self.laboratory = laboratory
 
-    def handling_customer(self, customer_obj: CustomerInfo):
+    def start_simulation(self):
 
-        match customer_obj:
-            case CustomerInfo(str(name), "1" as type):
+        iteration_number = 0
 
-                with self.reception.doctor_on_duty.request(priority=1) as req:
+        while True:
 
-                    self.reception.trip_to_reception(name)
-                    arrive = self.env.now
+            i = random.randint(
+                min(self.patient_types), max(self.patient_types))
 
-                    # waiting in queue
-                    yield req
-                    wait = self.env.now - arrive
-                    # we got to the doctor on duty
-                    self.env.process(
-                        self.reception.registration(type, name))
+            yield self.env.timeout(
+                random.expovariate(1.0 / self.patient_intervals[str(i)]))
 
-                with self.medical_chamber.nurse.request() as req:
+            iteration_number += 1
 
-                    arrive_after_register = self.env.now
-                    # waiting in queue
-                    yield req
-                    wait = self.env.now - arrive_after_register
-                    # print(f"Ожидал медсестру - {wait}. Пользователь {name}.")
-                    # go to the chamber
-                    self.env.process(
-                        self.medical_chamber.nurse_accompaniment(name))
+            self.handling_customer(
+                PatientInfo(str(iteration_number), str(i)))
 
-            case CustomerInfo(str(name), "2" | "3" as type):
+    def handling_customer(self, patient: PatientInfo):
 
-                with self.reception.doctor_on_duty.request(priority=2) as req:
+        match patient:
+            case PatientInfo(
+                "1" as type, request
+            ) if request['is_reg_finish'] == False:
 
-                    self.reception.trip_to_reception(name)
+                self.env.process(
+                    self.reception.request_registration(patient, 1))
 
-                    arrive = self.env.now
+            case PatientInfo(
+                "1" as type, request
+            ) if request['is_reg_finish'] == True:
 
-                    # waiting in queue
-                    yield req
-                    wait = self.env.now - arrive
-                    # we got to the doctor on duty
-                    self.env.process(self.reception.registration(type, name))
+                self.env.process(
+                    self.reception.request_accompaniment(patient))
 
-                with self.lab_registry.registry_admin.request() as req:
+            case PatientInfo(
+                "2" | "3" as type, request
+            ) if request['is_reg_finish'] == False:
 
-                    self.lab_registry.trip_to_lab(name)
+                self.env.process(
+                    self.reception.request_registration(patient, 2))
 
-                    arrive = self.env.now
-                    # waiting in queue
-                    yield req
-                    wait = self.env.now - arrive
-                    # we got to the administrator
-                    self.env.process(self.lab_registry.service(name))
+            case PatientInfo(
+                "2" | "3" as type, request
+            ) if request['is_reg_finish'] == True \
+                    and request['is_service_finish'] == False:
 
-                with self.lab_waiting_room.lab_assistant.request() as req:
+                self.env.process(
+                    self.laboratory.request_service(patient))
 
-                    arrive = self.env.now
-                    # waiting in queue
-                    yield req
-                    wait = self.env.now - arrive
-                    # we got to the administrator
-                    self.env.process(self.lab_waiting_room.analyse(name))
+            case PatientInfo(
+                "2" | "3" as type, request
+            ) if request['is_service_finish'] == True \
+                    and request['is_analyse_finish'] == False:
 
-                if type == "2":
+                self.env.process(
+                    self.laboratory.request_analyse(patient))
 
-                    self.lab_registry.trip_to_lab(name)
+            case PatientInfo(
+                "2" as type, request
+            ) if request['is_analyse_finish'] == True \
+                    and request['is_re-reg_finish'] == False:
 
-                    with self.reception.doctor_on_duty.request(priority=1) as req:
+                self.env.process(
+                    self.reception.request_registration(patient, 1))
 
-                        arrive = self.env.now
-                        # waiting in queue
-                        yield req
-                        wait = self.env.now - arrive
-                        # we got to the doctor on duty
-                        self.env.process(
-                            self.reception.registration(type, name))
+            case PatientInfo(
+                "2" as type, request
+            ) if request['is_analyse_finish'] == True \
+                    and request['is_re-reg_finish'] == True:
 
-                    with self.medical_chamber.nurse.request() as req:
-
-                        arrive_after_register = self.env.now
-                        # waiting in queue
-                        yield req
-                        wait = self.env.now - arrive_after_register
-                        self.env.process(
-                            self.medical_chamber.nurse_accompaniment(name))
+                self.env.process(
+                    self.reception.request_accompaniment(patient))
 
             case _:
                 print("Такого типа пациентов нет")
 
 
-def start_simulation(env, patient_intervals, hospital):
+def chose_dict(patient: PatientInfo) -> dict:
 
-    iteration_number = 0
+    match patient:
+        case PatientInfo("1" as type, _):
+            dict = result_type1[f'{patient.name}']
+        case PatientInfo("2" as type, _):
+            dict = result_type2[f'{patient.name}']
+        case PatientInfo("3" as type, _):
+            dict = result_type3[f'{patient.name}']
 
-    while True:
-        i = random.randint(1, 3)
-        yield env.timeout(
-            random.expovariate(1.0 / patient_intervals[str(i)]))
-        iteration_number += 1
-        env.process(hospital.handling_customer(
-            CustomerInfo(str(iteration_number), str(i))))
+    return dict
 
-        print(
-            f"Начал пользователь- {iteration_number}. Тип {i}. TIME - {env.now}")
+
+def build_histogram(data: dict, patinet_type: str, colums: list):
+
+    match patinet_type:
+        case "1":
+            df = pd.DataFrame.from_dict(
+                data, orient='index', columns=colums)
+        case "2":
+            df = pd.DataFrame.from_dict(
+                data, orient='index', columns=colums)
+        case "3":
+            df = pd.DataFrame.from_dict(
+                data, orient='index', columns=colums)
+
+    sns.set_style("darkgrid")
+    ax = sns.histplot(data=df, bins='auto')
+    plt.xlabel("Time")
+    plt.ylabel("Count")
+
+    for c in ax.containers:
+
+        labels = [f'{h:0.1f}' if (h := v.get_height()) != 0 else '' for v in c]
+
+        ax.bar_label(c, labels=labels, fontsize=8, padding=3)
+
+    ax.set_title("Patient type - " + patinet_type, fontsize=18)
+    plt.title("Patient type - " + patinet_type)
+    plt.show()
 
 
 if __name__ == "__main__":
 
     try:
 
-        # random.seed(RANDOM_SEED)
+        result_type1 = {}
+        result_type2 = {}
+        result_type3 = {}
+
         env = sp.Environment()
+
         reception = ReceptionDepartment(
             env,
-            2,
-            RECEPTION_TRIP_TIME,
-            AVG_REGISTRATION_TIMES,
+            HospitalConfig.NUMBER_OF_HOSPITAL_STAFF,
+            HospitalConfig.RECEPTION_TRIP_TIME,
+            HospitalConfig.AVG_REGISTRATION_TIMES,
+            HospitalConfig.CHAMBER_TRIP_TIMES,
         )
-        chamber = MedicalChamber(
+
+        laboratory = Labaratory(
             env,
-            3,
-            CHAMBER_TRIP_TIME_LOW,
-            CHAMBER_TRIP_TIME_HIGH,
+            HospitalConfig.NUMBER_OF_HOSPITAL_STAFF,
+            HospitalConfig.LAB_TRIP_TIMES,
+            HospitalConfig.LAB_REGISTRY_TIMES,
+            HospitalConfig.LAB_ANALYSIS_TIMES,
         )
-        lab_registry = LabRegistry(
-            env,
-            2,
-            LAB_TRIP_TIME_LOW,
-            LAB_TRIP_TIME_HIGH,
-            LAB_REGISTRY_TIME_SHAPE,
-            LAB_REGISTRY_TIME_SCALE,
-        )
-        lab_waiting_room = LabWaitingRoom(
-            env,
-            2,
-            LAB_ANALYSIS_TIME_SHAPE,
-            LAB_ANALYSIS_TIME_SCALE,
-        )
+
         hospital = Hospital(
             env,
-            PATIENT_TYPES,
-            PATIENT_INTERVAL_TIMES,
+            HospitalConfig.PATIENT_TYPES,
+            HospitalConfig.PATIENT_INTERVAL_TIMES,
             reception,
-            chamber,
-            lab_registry,
-            lab_waiting_room,
+            laboratory
         )
-        env.process(start_simulation(
-            env,
-            PATIENT_INTERVAL_TIMES,
-            hospital,
-        ))
-        while env.peek() < SIM_TIME:
+
+        env.process(hospital.start_simulation())
+
+        while env.peek() < Config.SIM_TIME:
             env.step()
+
+        colums_type1 = [
+            'trip_to_reception_time', 'wait_doctor', 'registration_time',
+            'wait_accompaniment_time',
+            'accompaniment_time'
+        ]
+
+        colums_1_type2 = [
+            'trip_to_reception_time', 'wait_doctor', 'registration_time'
+        ]
+
+        colums_2_type2 = [
+            'trip_time', 'wait_admin', 'service_time', 'wait_assistent',
+            'analyse_time'
+        ]
+
+        colums_3_type2 = [
+            'wait_accompaniment_time',
+            'accompaniment_time'
+        ]
+
+        colums_1_type3 = [
+            'trip_to_reception_time', 'wait_doctor', 'registration_time',
+        ]
+
+        colums_2_type3 = [
+            'wait_assistent', 'analyse_time'
+        ]
+
+        colusms_finish = [
+            'all_wasted_time'
+        ]
+
+        build_histogram(result_type1, '1', colums_type1)
+        build_histogram(result_type1, '1', colusms_finish)
+
+        build_histogram(result_type2, '2', colums_1_type2)
+        build_histogram(result_type2, '2', colums_2_type2)
+        build_histogram(result_type2, '2', colums_3_type2)
+        build_histogram(result_type2, '2', colusms_finish)
+
+        build_histogram(result_type3, '3', colums_1_type3)
+        build_histogram(result_type3, '3', colums_2_type3)
+        build_histogram(result_type3, '3', colusms_finish)
+
+        load_csv_file(
+            result_type1,
+            Config.PATH_RESULTS_HOSPITAL,
+            'result_type1'
+        )
+        load_csv_file(
+            result_type2,
+            Config.PATH_RESULTS_HOSPITAL,
+            'result_type2'
+        )
+        load_csv_file(
+            result_type3,
+            Config.PATH_RESULTS_HOSPITAL,
+            'result_type3'
+        )
+
+        get_statistics_hospital(Config.PATH_RESULTS_HOSPITAL, [
+            'result_type1', 'result_type2', 'result_type3'
+        ])
 
     except Exception as ex:
         print(ex)

@@ -3,12 +3,9 @@ import pandas as pd
 import simpy as sp
 import seaborn as sns
 from matplotlib import pyplot as plt
-from app.config import (
-    AVG_SERVICE_TIME,
-    CUSTOMER_INTERVAL,
-    NUM_OF_BANK_TELLERS,
-    RANDOM_SEED,
-    SIM_TIME)
+from utils.load import load_csv_file
+from utils.statistic import get_statistics_bank
+from app.config import Config, BankConfig
 
 
 class Bank(object):
@@ -26,8 +23,12 @@ class Bank(object):
 
         yield self.env.timeout(time_in_Bank)
 
-        self.customers_info[f'{customer_name}']['finished_at'] = self.env.now
-        self.customers_info[f'{customer_name}']['lead_time'] = time_in_Bank
+        dict = self.customers_info[f'{customer_name}']
+
+        dict.update({'lead_time': time_in_Bank})
+        dict.update({'finished_at': self.env.now})
+        wasted_time = dict['finished_at'] - dict['arrival']
+        dict.update({'all_wasted_time': wasted_time})
 
 
 def customer(env: sp.Environment, name: str, bank: Bank):
@@ -64,9 +65,9 @@ def no_in_system(bank_teller: sp.Resource) -> int:
 
 
 def setup_simulation(
-        env: sp.Environment,
-        bank: Bank,
-        customer_interval: float
+    env: sp.Environment,
+    bank: Bank,
+    customer_interval: float
 ):
 
     iteration_number = 0
@@ -85,7 +86,7 @@ def build_histogram(data: dict, histogram_name: str):
         ])
 
     sns.set_style("darkgrid")
-    ax = sns.histplot(data=df, kde=True, bins='auto')
+    ax = sns.histplot(data=df, bins='auto')
     plt.xlabel("Time")
     plt.ylabel("Count of customers")
 
@@ -93,38 +94,34 @@ def build_histogram(data: dict, histogram_name: str):
         labels = [str(v) if v else '' for v in ax.containers[i].datavalues]
         ax.bar_label(ax.containers[i], labels=labels)
 
-    # ax.bar_label(ax.containers[0], color='orange')
     ax.set_title(histogram_name, fontsize=18)
     plt.title(histogram_name)
     plt.show()
 
 
-def load_csv_file(data: dict):
-
-    df = pd.DataFrame.from_dict(data)
-    df.T.to_csv('simulation_results.csv')
-
-
 if __name__ == "__main__":
 
     try:
-        random.seed(RANDOM_SEED)
+        if Config.ENABLE_SEED:
+            random.seed(Config.RANDOM_SEED)
         env = sp.Environment()
         bank = Bank(
             env,
-            NUM_OF_BANK_TELLERS,
-            AVG_SERVICE_TIME
+            BankConfig.NUM_OF_BANK_TELLERS,
+            BankConfig.AVG_SERVICE_TIME
         )
         env.process(setup_simulation(
             env,
             bank,
-            CUSTOMER_INTERVAL
+            BankConfig.CUSTOMER_INTERVAL
         ))
-        # env.run(until=SIM_TIME)
-        while env.peek() < SIM_TIME:
+        while env.peek() < Config.SIM_TIME:
             env.step()
         build_histogram(bank.customers_info, 'Histogram')
-        load_csv_file(bank.customers_info)
+        load_csv_file(
+            bank.customers_info, Config.PATH_RESULTS_BANK, 'results_bank')
+        get_statistics_bank(
+            Config.PATH_RESULTS_BANK, 'results_bank')
 
     except Exception as ex:
         print(ex)
