@@ -2,7 +2,7 @@
 name = "code_lab2"
 version = "0.1.0"
 description = "System Modulation lab2"
-authors = ["Nykyforov Denys <deshq.nikiforov@gmail.com>"]
+authors = ["Hundarchuk Vladyslav"]
 
 [tool.poetry.dependencies]
 python = "3.10.4"
